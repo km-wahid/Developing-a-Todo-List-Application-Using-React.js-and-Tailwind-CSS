@@ -1,0 +1,44 @@
+name: Verify
+on:
+  push:
+  pull_request:
+jobs:
+  app:
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: local-test-password
+          MYSQL_DATABASE: growth_planner_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -plocal-test-password"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      NODE_ENV: test
+      DATABASE_URL: mysql://root:local-test-password@127.0.0.1:3306/growth_planner_test
+      DB_TLS: 'false'
+      RUN_DB_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --include=dev
+      - run: npm run db:migrate && npm run db:seed
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+        env:
+          RUN_DB_TESTS: 'false'
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-results
+          path: test-results/
